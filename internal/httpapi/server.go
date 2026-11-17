@@ -11,6 +11,11 @@ import (
 func NewMux(chat http.Handler, auth *Auth) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.Handle("POST /v1/chat/completions", auth.Wrap(chat))
+	// Without this, the catch-all "/" below would turn GET /v1/chat/completions into a 404.
+	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Allow", http.MethodPost)
+		writeError(w, http.StatusMethodNotAllowed, api.ErrTypeInvalidRequest, "method not allowed; use POST")
+	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok"}` + "\n"))

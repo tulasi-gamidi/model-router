@@ -153,6 +153,7 @@ Layered timeouts, because a long answer is not a failure.
 | Server write | 0 | `http.Server.WriteTimeout` left unset for the same reason | n/a |
 | Server read header | 5s | `http.Server.ReadHeaderTimeout` (slowloris protection) | Connection closed |
 | Server read (body) | 30s | `http.Server.ReadTimeout` (request body only; bodies capped at 1MB) | Connection closed |
+| Server keep-alive idle | 120s | `http.Server.IdleTimeout` (between requests on a client connection) | Connection closed |
 | Shutdown drain | 25s | `srv.Shutdown(ctx)` then `srv.Close()` | Remaining streams cut |
 
 ## 7. Code map

@@ -31,7 +31,8 @@ provider on transient errors.
 - Every goroutine has a clear exit path tied to a context. Prefer no extra goroutines in the request path.
 - HTTP server: Go 1.22 method routing (`mux.HandleFunc("POST /v1/...", h)`), `ReadHeaderTimeout` set,
   graceful shutdown via `signal.NotifyContext` + `srv.Shutdown(ctx)`.
-- Request bodies are capped with `http.MaxBytesReader`. Invalid input → 400 with a JSON error.
+- Request bodies are capped with `http.MaxBytesReader` (1MB → 413). Invalid input → 400 with a JSON error.
+  Unknown path → 404, wrong method on the chat path → 405 with `Allow: POST`.
 - Error responses use the OpenAI shape: `{"error":{"message":"...","type":"..."}}`.
 - Config from env vars, validated at startup; fail fast with a clear message.
 
@@ -85,7 +86,8 @@ provider on transient errors.
 - Never call real provider APIs in tests. CI has no secrets.
 - Assert behaviour, not just `err == nil`: status code, streamed text, `[DONE]` present/absent,
   which provider served the request, upstream called/not called, cancellation observed.
-- No `time.Sleep` for synchronisation; use channels, contexts, or short timeouts.
+- No `time.Sleep` for synchronisation; use channels, contexts, or short timeouts. A deliberate delay that *is* the
+  behaviour under test (e.g. simulating a slow client longer than the idle timeout) is allowed and must be commented.
 - Must-have cases: SSE parsing; each adapter's translation + non-200 + missing terminator;
   router fallback / no fallback on 400 / all fail / cost order; handler happy path, 429→fallback (200, backup text,
   no error event), mid-stream drop, client disconnect; auth 401 with upstream never called.

@@ -326,4 +326,15 @@ func TestHealthzAndNotFound(t *testing.T) {
 	if resp2.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d", resp2.StatusCode)
 	}
+	resp3, err := http.Get(gw.URL + "/v1/chat/completions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp3.Body.Close()
+	if resp3.StatusCode != http.StatusMethodNotAllowed || resp3.Header.Get("Allow") != "POST" {
+		t.Fatalf("GET chat: status = %d allow = %q", resp3.StatusCode, resp3.Header.Get("Allow"))
+	}
+	if primary.Called() {
+		t.Fatal("upstream must not be called")
+	}
 }

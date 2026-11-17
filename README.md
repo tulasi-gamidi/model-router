@@ -115,13 +115,18 @@ curl -s $GW/v1/chat/completions -H "Authorization: Bearer $KEY" -d '{"model":"op
 # 502 {"error":{"message":"provider digitalocean refused the gateway's credentials or model access (status 403)","type":"upstream_config_error"}}
 ```
 
-**OpenAI SDKs work unchanged:**
+**OpenAI SDKs work unchanged** (verified with the official `openai` Python package: streaming, usage,
+fallback, and gateway errors surfacing as the SDK's typed `AuthenticationError` / `BadRequestError`):
 
 ```python
 from openai import OpenAI
 client = OpenAI(base_url="http://localhost:8080/v1", api_key="<gateway key>")
-for chunk in client.chat.completions.create(model="auto", messages=[{"role": "user", "content": "hi"}], stream=True):
-    print(chunk.choices[0].delta.content or "" if chunk.choices else "", end="", flush=True)
+stream = client.chat.completions.create(
+    model="auto", stream=True, stream_options={"include_usage": True},
+    messages=[{"role": "user", "content": "Name three colors."}])
+for chunk in stream:
+    if chunk.choices and chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="", flush=True)
 ```
 
 ### Errors
@@ -132,6 +137,8 @@ All errors before streaming use the OpenAI shape `{"error":{"message","type"}}`:
 |---|---|---|
 | 400 | `invalid_request_error` | bad JSON, failed validation, `stream:false`, unknown model, upstream rejected the request |
 | 401 | `authentication_error` | missing/invalid gateway key |
+| 404 | `invalid_request_error` | unknown path (non-chat endpoints are out of scope) |
+| 405 | `invalid_request_error` | non-POST on `/v1/chat/completions` (`Allow: POST`) |
 | 413 | `invalid_request_error` | body > 1MB |
 | 502 | `upstream_config_error` | upstream 401/403/404 (gateway's provider key/tier/model id is wrong) |
 | 502 | `no_available_provider` | every target failed with a retryable error |
@@ -155,7 +162,8 @@ midfail nodone hang`; it records whether it was called and whether it observed c
 |---|---|
 | `sse` | multi-line data, comments, CRLF, 1MB lines, oversize line, aborted connection |
 | `provider` | `IsRetryable` table (incl. cancelled ctx wrapping a network error → not retryable) |
-| `openai`, `anthropic` adapters | request translation, request not mutated, chunk/usage/finish_reason mapping, non-200 classification, missing terminator, mid-stream drop, idle timeout, client cancel unblocks `Next`, slow consumer is not idle, header timeout, connection refused |
+| `openai` adapter (+ shared `OpenSSE` plumbing) | request built correctly and not mutated, chunk/usage/finish_reason mapping, non-200 classification, missing `[DONE]`, mid-stream drop, stall → idle timeout (upstream sees cancel), vendor error event, client cancel unblocks `Next`, slow consumer is not idle, `Close` idempotent, header timeout, connection refused |
+| `anthropic` adapter | request translation (system lifted, empty assistant dropped, temperature clamped, `x-api-key`), request not mutated, named events → chunks with usage/finish_reason, 529/429/503 retryable and 400/401 not, `overloaded_error` event retryable, missing `message_stop`. Timeouts/cancellation come from the same `OpenSSE` plumbing tested above. |
 | `router` | cheapest first, fallback on 429/503/header timeout/stall/error-event/empty-200/conn-refused, no fallback on 400/401, all fail, client cancel stops immediately, concrete model never switches model, no fallback after first chunk, manifest validation |
 | `httpapi` (full stack) | happy path + headers + usage, fallback invisible to client (200, backup text, no error event), mid-stream drop and missing `[DONE]` (partial + error event, no `[DONE]`), client disconnect cancels upstream, 401 never reaches upstream, error mapping |
 | `config` | defaults, all-errors-at-once validation, embedded manifest compiles |
