@@ -1,0 +1,33 @@
+{
+  "default_route": "auto",
+  "models": {
+    "mistral-3-14B": [
+      {"provider": "digitalocean", "upstream_model": "mistral-3-14B", "input_cost_per_mtok": 0.10, "output_cost_per_mtok": 0.30}
+    ],
+    "deepseek-3.2": [
+      {"provider": "digitalocean", "upstream_model": "deepseek-3.2", "input_cost_per_mtok": 0.27, "output_cost_per_mtok": 0.40}
+    ],
+    "qwen3.8-max": [
+      {"provider": "digitalocean", "upstream_model": "qwen3.8-max", "input_cost_per_mtok": 1.20, "output_cost_per_mtok": 6.00}
+    ],
+    "kimi-k2.6": [
+      {"provider": "digitalocean", "upstream_model": "kimi-k2.6", "input_cost_per_mtok": 0.60, "output_cost_per_mtok": 2.50}
+    ],
+    "openai-gpt-4o-mini": [
+      {"provider": "digitalocean", "upstream_model": "openai-gpt-4o-mini", "input_cost_per_mtok": 0.15, "output_cost_per_mtok": 0.60}
+    ],
+    "claude-haiku": [
+      {"provider": "anthropic", "upstream_model": "claude-haiku-4-5", "input_cost_per_mtok": 1.00, "output_cost_per_mtok": 5.00},
+      {"provider": "digitalocean", "upstream_model": "anthropic-claude-haiku-4.5", "input_cost_per_mtok": 1.10, "output_cost_per_mtok": 5.50}
+    ],
+    "demo-broken": [
+      {"provider": "demo-broken", "upstream_model": "mistral-3-14B", "input_cost_per_mtok": 0.01, "output_cost_per_mtok": 0.01}
+    ]
+  },
+  "routes": {
+    "auto": ["mistral-3-14B", "deepseek-3.2", "qwen3.8-max"],
+    "fast": ["mistral-3-14B", "deepseek-3.2", "qwen3.8-max"],
+    "smart": ["deepseek-3.2", "kimi-k2.6", "qwen3.8-max"],
+    "demo-fallback": ["demo-broken", "mistral-3-14B"]
+  }
+}

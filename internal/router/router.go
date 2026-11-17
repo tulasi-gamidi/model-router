@@ -38,6 +38,9 @@ type RouteError struct {
 }
 
 func (e *RouteError) Error() string {
+	if len(e.Attempts) == 0 {
+		return e.Err.Error()
+	}
 	parts := make([]string, len(e.Attempts))
 	for i, a := range e.Attempts {
 		parts[i] = a.String()
