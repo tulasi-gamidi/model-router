@@ -45,7 +45,7 @@ var DefaultChunks = []string{"Hello", ", ", "world"}
 // Options configure a fake upstream.
 type Options struct {
 	Format Format   // default FormatOpenAI
-	Chunks []string // default DefaultChunks
+	Chunks []string // nil → DefaultChunks; empty slice → no content chunks
 	Model  string   // model reported in chunks; default echoes the request model
 }
 
@@ -72,7 +72,7 @@ func NewUpstream(t *testing.T, mode Mode, opts Options) *Upstream {
 	if opts.Format == "" {
 		opts.Format = FormatOpenAI
 	}
-	if len(opts.Chunks) == 0 {
+	if opts.Chunks == nil { // an explicit empty slice means "no content chunks"
 		opts.Chunks = DefaultChunks
 	}
 	u := &Upstream{mode: mode, opts: opts, cancelled: make(chan struct{}), stop: make(chan struct{})}
@@ -179,7 +179,7 @@ func (u *Upstream) serve(w http.ResponseWriter, r *http.Request) {
 
 	ev.start()
 	chunks := u.opts.Chunks
-	if u.mode == ModeMidFail || u.mode == ModeHang {
+	if (u.mode == ModeMidFail || u.mode == ModeHang) && len(chunks) > 1 {
 		chunks = chunks[:1]
 	}
 	for _, c := range chunks {
