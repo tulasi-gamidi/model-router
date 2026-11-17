@@ -1,7 +1,8 @@
 # Architecture
 
 How a chat request moves through the gateway, how the target is chosen, where fallback is allowed,
-and how chunks flow from provider to client without buffering.
+and how chunks flow from provider to client without buffering. For the code-level view (types,
+algorithms, state, concurrency) see [docs/lld.md](docs/lld.md).
 
 ## 1. Components and the adapter boundary
 

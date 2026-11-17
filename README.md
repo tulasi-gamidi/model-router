@@ -9,6 +9,7 @@ target when a provider fails transiently (429, 502/503/504, Anthropic 529, conne
 200 that stalls before its first token).
 
 - Architecture, diagrams and failure handling: [architecture.md](architecture.md)
+- Low-level design (types, algorithms, stream lifecycle, concurrency, extension recipes): [docs/lld.md](docs/lld.md)
 - Engineering rules used while building it: [CLAUDE.md](CLAUDE.md)
 
 ## Features

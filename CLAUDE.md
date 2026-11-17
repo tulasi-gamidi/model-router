@@ -15,7 +15,8 @@ provider on transient errors.
 - Every change ships with tests. Run build, vet and `go test -race ./...` before saying a slice is done.
 - Standard library only. Ask before adding any dependency (including provider SDKs).
 - Never commit secrets. Keys come from env vars; `.env` is gitignored; update `.env.example` when adding a var.
-- Keep the README and Mermaid diagrams in sync when behaviour changes.
+- Keep the README, architecture.md (HLD), docs/lld.md (LLD, including its code links/line numbers) and Mermaid
+  diagrams in sync when behaviour changes.
 
 ## Go conventions
 - Layout: `cmd/server` (wiring only), `internal/<pkg>` for everything else. No `pkg/`, no `utils`.
