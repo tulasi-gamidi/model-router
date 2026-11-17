@@ -21,6 +21,8 @@ provider on transient errors.
 - Layout: `cmd/server` (wiring only), `internal/<pkg>` for everything else. No `pkg/`, no `utils`.
 - Dependencies are passed in through struct fields / constructors (`NewX(...)`). No package-level mutable state.
 - `context.Context` is the first parameter of any function that does I/O. Never store it in a struct.
+  Documented exception: `Stream.Next()` takes no ctx; the stream is bound to the ctx given to `Open`
+  (like an `http.Response` body) and keeps only its `CancelCauseFunc`.
 - Errors: return them, wrap with `fmt.Errorf("doing x: %w", err)`, inspect with `errors.Is` / `errors.As`.
   No `panic` outside `main`. Don't log and return the same error.
 - Keep interfaces small (1-3 methods).
@@ -35,12 +37,23 @@ provider on transient errors.
 
 ## Streaming and fallback rules (critical)
 - Unified schema = OpenAI chat completions format (text content only). Handler and Router never see vendor fields.
+- Handler calls `Router.Route(ctx, req)`, which resolves `req.Model` to cost-ordered targets and calls
+  `Provider.Open(ctx, target.UpstreamModel, req)` on each until one works.
+- `req.Model` semantics: a route alias (`auto`, `fast`, ...) may fall back across models and providers; a
+  concrete model falls back across providers of that model only (never silently swaps models); empty → default
+  route; unknown → 400 before any upstream call.
 - `Provider.Open(ctx, model, req)` sends the upstream request with `stream: true` and **checks the HTTP status
-  before returning a Stream**. Non-200 → close body, return `*UpstreamError{Status, Body}`.
-- Router tries targets in cost order. Fall back only when the error is retryable:
-  429, 502, 503, 504, connection errors, connect/response-header timeouts.
-  Do NOT fall back on 400/401/other 4xx, and never on `context.Canceled` (client is gone: stop immediately).
-- Handler writes status 200 and SSE headers only after the Router returns a Stream. After that point there is no fallback.
+  before returning a Stream**. Non-200 → close body, return `*UpstreamError{Provider, Status, Retryable, Message}`.
+- `Open` must not mutate `req` (it is reused across fallback attempts); adapters build a fresh vendor struct.
+- Retryability is decided by the adapter (it knows its vendor): default 408/429/502/503/504; Anthropic adds 529
+  and 500, plus `overloaded_error` events. The Router uses one classifier, `provider.IsRetryable(ctx, err)`, which
+  checks `ctx.Err()` first (client gone → never retry), then `*UpstreamError.Retryable`, idle timeout,
+  missing terminator, and transport errors (connect refused/reset, dial/TLS/header timeouts).
+  Do NOT fall back on 400/401/403/other 4xx.
+- Router peeks: after `Open` it reads until the first substantive chunk (role-only preamble chunks are buffered).
+  Failures before that (200-then-stall, 200-then-error-event) still fall back. **Point of no return = first
+  substantive chunk.** Handler writes status 200 and SSE headers only after `Route` returns; no fallback after.
+- `Stream.Close()` is idempotent and safe after any error; the handler always `defer stream.Close()`.
 - One goroutine per request, pull-based: `Next()` → translate → write `data: <json>\n\n` → `Flush()` after every chunk.
   Never buffer the full response, never `io.ReadAll` a successful stream body.
 - Pass `r.Context()` to upstream requests (`http.NewRequestWithContext`) so client disconnect aborts upstream.
@@ -52,18 +65,23 @@ provider on transient errors.
 ## Timeouts
 - Connect 5s and TLS handshake 5s (`net.Dialer`, `Transport.TLSHandshakeTimeout`) → fallback.
 - Response headers 30s (`Transport.ResponseHeaderTimeout`) → fallback.
-- Idle between chunks 30s (timer reset per chunk that cancels the request context) → mid-stream error.
+- Idle between chunks 30s (`time.AfterFunc` that calls `cancel(ErrIdleTimeout)` on the stream's ctx). The timer
+  is armed only while `Next()` waits on the upstream, so a slow client (backpressure) is never treated as idle.
+  Before the first chunk → fallback; after → mid-stream error.
 - Do NOT set `http.Client.Timeout` (it covers the whole body and kills long streams).
 - Do NOT set `http.Server.WriteTimeout` (same reason).
 
 ## Auth
 - Middleware checks `Authorization: Bearer <key>` against configured gateway keys before any upstream work.
-- Compare keys with `crypto/subtle.ConstantTimeCompare`. Reject with 401 JSON error.
+- Compare keys with `crypto/subtle.ConstantTimeCompare` over SHA-256 digests (length-independent), checking every
+  key without early exit. Reject with 401 JSON error.
+- The gateway key is never forwarded upstream; each adapter uses its own provider key.
 
 ## Testing
 - Table-driven tests; use `t.Helper()`, `t.Cleanup()`, `t.Context()` where available.
-- Fake upstreams with `httptest.Server` (shared helper with modes: ok, 429, 503, slow, midfail, nodone).
-  The helper records whether it was called and whether the request context was cancelled.
+- Fake upstreams with `internal/testutil.NewUpstream` (`httptest.Server`; OpenAI or Anthropic wire format; modes:
+  ok, 400, 401, 429, 503, 529, slow, stall, error-first, midfail, nodone, hang).
+  The helper records whether it was called, the last body/auth headers, and whether the request context was cancelled.
 - Never call real provider APIs in tests. CI has no secrets.
 - Assert behaviour, not just `err == nil`: status code, streamed text, `[DONE]` present/absent,
   which provider served the request, upstream called/not called, cancellation observed.
